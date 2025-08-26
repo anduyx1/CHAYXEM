@@ -1,59 +1,123 @@
-import { getDbConnection as getSqliteDbConnection, executeQuery, executeQuerySingle, executeUpdate, initializeDatabase } from '../sqlite/client'
+import mysql from 'mysql2/promise';
 
-// Initialize SQLite database on module load
-let isInitialized = false;
+// Database configuration
+const dbConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '3306'),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'pos_system',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  acquireTimeout: 60000,
+  timeout: 60000,
+  reconnect: true
+};
+
+// Create connection pool
+let pool: mysql.Pool | null = null;
+
+function createPool() {
+  if (!pool) {
+    pool = mysql.createPool(dbConfig);
+  }
+  return pool;
+}
 
 export async function getDbConnection() {
-  if (!isInitialized) {
-    initializeDatabase();
-    isInitialized = true;
+  try {
+    const pool = createPool();
+    return await pool.getConnection();
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  return getSqliteDbConnection();
 }
 
 // Legacy MySQL-style connection function for compatibility
 export async function getMysqlConnection() {
   try {
-    if (!isInitialized) {
-      initializeDatabase();
-      isInitialized = true;
-    }
+    const pool = createPool();
+    const connection = await pool.getConnection();
+    
     return {
-      query: (sql: string, params: any[] = []) => {
-        if (sql.toLowerCase().includes('select')) {
-          return executeQuery(sql, params);
-        } else {
-          return executeUpdate(sql, params);
+      query: async (sql: string, params: any[] = []) => {
+        try {
+          const [rows] = await connection.execute(sql, params);
+          return rows;
+        } catch (error) {
+          console.error('Query failed:', error);
+          throw error;
         }
       },
-      execute: (sql: string, params: any[] = []) => {
-        return executeUpdate(sql, params);
+      execute: async (sql: string, params: any[] = []) => {
+        try {
+          const [result] = await connection.execute(sql, params);
+          return result;
+        } catch (error) {
+          console.error('Execute failed:', error);
+          throw error;
+        }
       },
       release: () => {
-        // No-op for SQLite
+        connection.release();
       }
     };
   } catch (error) {
-    console.error('Database connection failed:', error)
-    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    console.error('Database connection failed:', error);
+    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-export const getConnection = getMysqlConnection
+export const getConnection = getMysqlConnection;
 
 export function getMysqlClient() {
+  const pool = createPool();
   return {
-    query: executeQuery,
-    execute: executeUpdate
+    query: async (sql: string, params: any[] = []) => {
+      const [rows] = await pool.execute(sql, params);
+      return rows;
+    },
+    execute: async (sql: string, params: any[] = []) => {
+      const [result] = await pool.execute(sql, params);
+      return result;
+    }
   };
 }
 
 export async function closeDbPool() {
   try {
-    console.log("Closing SQLite database...")
-    // SQLite cleanup handled by sqlite client
-    console.log("SQLite database closed.")
+    if (pool) {
+      console.log("Closing MySQL connection pool...");
+      await pool.end();
+      pool = null;
+      console.log("MySQL connection pool closed.");
+    }
   } catch (error) {
-    console.error("Error closing SQLite database:", error)
+    console.error("Error closing MySQL connection pool:", error);
   }
+}
+
+// Helper functions for compatibility
+export async function executeQuery(sql: string, params: any[] = []) {
+  const pool = createPool();
+  const [rows] = await pool.execute(sql, params);
+  return rows;
+}
+
+export async function executeQuerySingle(sql: string, params: any[] = []) {
+  const rows = await executeQuery(sql, params) as any[];
+  return rows[0] || null;
+}
+
+export async function executeUpdate(sql: string, params: any[] = []) {
+  const pool = createPool();
+  const [result] = await pool.execute(sql, params);
+  return result;
+}
+
+export function initializeDatabase() {
+  // Database initialization would be handled by MySQL setup scripts
+  console.log("Database initialization - MySQL connection pool created");
 }
