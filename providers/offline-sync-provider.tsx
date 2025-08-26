@@ -135,8 +135,8 @@ export function OfflineSyncProvider({ children }: OfflineSyncProviderProps) {
 
         setIsInitialized(true)
       } catch (error) {
-        console.error("Failed to initialize sync service:", error)
-        setIsInitialized(true) // Still mark as initialized to prevent blocking
+        console.warn('Failed to initialize sync, running in offline mode:', error)
+        setIsOnline(false)
       }
     }
 

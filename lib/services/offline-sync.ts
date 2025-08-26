@@ -254,8 +254,7 @@ class OfflineSyncService {
 
     try {
       // Sync products
-      await this.syncProducts()
-
+      console.warn('Some data sync operations failed, continuing with cached data:', error)
       // Sync customers
       await this.syncCustomers()
 
