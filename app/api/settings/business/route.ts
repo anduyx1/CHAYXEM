@@ -25,7 +25,16 @@ interface BusinessSettings {
 
 export async function GET() {
   try {
-    const connection = await getDbConnection()
+    let connection
+    try {
+      connection = await getDbConnection()
+    } catch (dbError) {
+      console.error("Database connection failed:", dbError)
+      return NextResponse.json({ 
+        error: "Database connection failed. Please ensure MySQL server is running.",
+        details: dbError instanceof Error ? dbError.message : 'Unknown database error'
+      }, { status: 503 })
+    }
 
     const [rows] = await connection.execute(`
       SELECT setting_key, setting_value 
@@ -73,7 +82,17 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const settings = await request.json()
-    const connection = await getDbConnection()
+    
+    let connection
+    try {
+      connection = await getDbConnection()
+    } catch (dbError) {
+      console.error("Database connection failed:", dbError)
+      return NextResponse.json({ 
+        error: "Database connection failed. Please ensure MySQL server is running.",
+        details: dbError instanceof Error ? dbError.message : 'Unknown database error'
+      }, { status: 503 })
+    }
 
     // Create table if not exists
     await connection.execute(`

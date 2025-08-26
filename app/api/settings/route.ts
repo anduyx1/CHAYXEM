@@ -9,7 +9,16 @@ interface SettingRow extends RowDataPacket {
 
 export async function GET() {
   try {
-    const connection = await mysql.getConnection()
+    let connection
+    try {
+      connection = await mysql.getConnection()
+    } catch (dbError) {
+      console.error("Database connection failed:", dbError)
+      return NextResponse.json({ 
+        error: "Database connection failed. Please ensure MySQL server is running.",
+        details: dbError instanceof Error ? dbError.message : 'Unknown database error'
+      }, { status: 503 })
+    }
 
     const [rows] = await connection.execute(`
       SELECT 
