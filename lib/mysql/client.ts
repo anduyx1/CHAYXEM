@@ -1,4 +1,4 @@
-import { getDbConnection, executeQuery, executeQuerySingle, executeUpdate, initializeDatabase } from '../sqlite/client'
+import { getDbConnection as getSqliteDbConnection, executeQuery, executeQuerySingle, executeUpdate, initializeDatabase } from '../sqlite/client'
 
 // Initialize SQLite database on module load
 let isInitialized = false;
@@ -8,7 +8,7 @@ export async function getDbConnection() {
     initializeDatabase();
     isInitialized = true;
   }
-  return getDbConnection();
+  return getSqliteDbConnection();
 }
 
 // Legacy MySQL-style connection function for compatibility
