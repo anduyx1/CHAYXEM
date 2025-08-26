@@ -1,47 +1,59 @@
-import mysql from "mysql2/promise"
+import { getDbConnection, executeQuery, executeQuerySingle, executeUpdate, initializeDatabase } from '../sqlite/client'
 
-// Database connection configuration with fallback handling
-const dbConfig = {
-  host: process.env.MYSQL_HOST || 'localhost',
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'pos_system',
-  port: parseInt(process.env.MYSQL_PORT || '3306'),
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  acquireTimeout: 60000,
-  timeout: 60000,
-  reconnect: true
+// Initialize SQLite database on module load
+let isInitialized = false;
+
+export async function getDbConnection() {
+  if (!isInitialized) {
+    initializeDatabase();
+    isInitialized = true;
+  }
+  return getDbConnection();
 }
 
-// Create a connection pool
-export const dbPool = mysql.createPool(dbConfig)
-
-// Function to get a connection from the pool
-export async function getDbConnection() {
+// Legacy MySQL-style connection function for compatibility
+export async function getMysqlConnection() {
   try {
-    const connection = await dbPool.getConnection()
-    return connection
+    if (!isInitialized) {
+      initializeDatabase();
+      isInitialized = true;
+    }
+    return {
+      query: (sql: string, params: any[] = []) => {
+        if (sql.toLowerCase().includes('select')) {
+          return executeQuery(sql, params);
+        } else {
+          return executeUpdate(sql, params);
+        }
+      },
+      execute: (sql: string, params: any[] = []) => {
+        return executeUpdate(sql, params);
+      },
+      release: () => {
+        // No-op for SQLite
+      }
+    };
   } catch (error) {
     console.error('Database connection failed:', error)
     throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
-export const getConnection = getDbConnection
+export const getConnection = getMysqlConnection
 
 export function getMysqlClient() {
-  return dbPool
+  return {
+    query: executeQuery,
+    execute: executeUpdate
+  };
 }
 
-// Manual cleanup function (can be called when needed)
 export async function closeDbPool() {
   try {
-    console.log("Closing MySQL connection pool...")
-    await dbPool.end()
-    console.log("MySQL connection pool closed.")
+    console.log("Closing SQLite database...")
+    // SQLite cleanup handled by sqlite client
+    console.log("SQLite database closed.")
   } catch (error) {
-    console.error("Error closing MySQL pool:", error)
+    console.error("Error closing SQLite database:", error)
   }
 }
