@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { fallbackStorage } from '../storage/fallback-storage';
 
 // Database configuration
 const dbConfig = {
@@ -31,7 +32,14 @@ export async function getDbConnection() {
     return await pool.getConnection();
   } catch (error) {
     console.error('Database connection failed:', error);
-    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.warn('Falling back to in-memory storage');
+    
+    // Return fallback storage that mimics database connection interface
+    return {
+      query: fallbackStorage.query.bind(fallbackStorage),
+      execute: fallbackStorage.execute.bind(fallbackStorage),
+      release: fallbackStorage.release.bind(fallbackStorage)
+    };
   }
 }
 
@@ -66,7 +74,14 @@ export async function getMysqlConnection() {
     };
   } catch (error) {
     console.error('Database connection failed:', error);
-    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.warn('Falling back to in-memory storage');
+    
+    // Return fallback storage that mimics database connection interface
+    return {
+      query: fallbackStorage.query.bind(fallbackStorage),
+      execute: fallbackStorage.execute.bind(fallbackStorage),
+      release: fallbackStorage.release.bind(fallbackStorage)
+    };
   }
 }
 
@@ -101,9 +116,14 @@ export async function closeDbPool() {
 
 // Helper functions for compatibility
 export async function executeQuery(sql: string, params: any[] = []) {
-  const pool = createPool();
-  const [rows] = await pool.execute(sql, params);
-  return rows;
+  try {
+    const pool = createPool();
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.warn('Database unavailable, using fallback storage');
+    return await fallbackStorage.query(sql, params);
+  }
 }
 
 export async function executeQuerySingle(sql: string, params: any[] = []) {
@@ -112,9 +132,14 @@ export async function executeQuerySingle(sql: string, params: any[] = []) {
 }
 
 export async function executeUpdate(sql: string, params: any[] = []) {
-  const pool = createPool();
-  const [result] = await pool.execute(sql, params);
-  return result;
+  try {
+    const pool = createPool();
+    const [result] = await pool.execute(sql, params);
+    return result;
+  } catch (error) {
+    console.warn('Database unavailable, using fallback storage');
+    return await fallbackStorage.execute(sql, params);
+  }
 }
 
 export function initializeDatabase() {
