@@ -1,7 +1,7 @@
 "use server"
 
 import { unstable_noStore as noStore } from "next/cache"
-import { dbPool as mysql } from "@/lib/mysql/client"
+import { getConnection } from "@/lib/mysql/client"
 import type { Category } from "@/lib/types/database"
 import type { ResultSetHeader } from "mysql2"
 
@@ -13,29 +13,39 @@ interface MySQLError extends Error {
 
 export async function getCategories(): Promise<Category[]> {
   noStore()
+  let connection
   try {
-    const [rows] = await mysql.execute("SELECT * FROM categories ORDER BY name ASC")
+    connection = await getConnection()
+    const [rows] = await connection.execute("SELECT * FROM categories ORDER BY name ASC")
     return rows as Category[]
   } catch (error) {
     console.error("Error fetching categories from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function getCategoryById(id: number): Promise<Category | null> {
   noStore()
+  let connection
   try {
-    const [rows] = await mysql.execute("SELECT * FROM categories WHERE id = ?", [id])
+    connection = await getConnection()
+    const [rows] = await connection.execute("SELECT * FROM categories WHERE id = ?", [id])
     return (rows as Category[])[0] || null
   } catch (error) {
     console.error("Error fetching category by ID from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function createCategory(name: string): Promise<MutationResult<Category | null>> {
+  let connection
   try {
-    const [result] = await mysql.execute("INSERT INTO categories (name) VALUES (?)", [name])
+    connection = await getConnection()
+    const [result] = await connection.execute("INSERT INTO categories (name) VALUES (?)", [name])
     const newId = (result as ResultSetHeader).insertId
     const newCategory = await getCategoryById(newId)
     return { success: true, data: newCategory }
@@ -46,12 +56,16 @@ export async function createCategory(name: string): Promise<MutationResult<Categ
       return { success: false, error: "Tên danh mục này đã tồn tại. Vui lòng sử dụng tên khác." }
     }
     return { success: false, error: "Có lỗi xảy ra khi lưu danh mục." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function updateCategory(id: number, name: string): Promise<MutationResult<Category | null>> {
+  let connection
   try {
-    await mysql.execute("UPDATE categories SET name = ?, updated_at = NOW() WHERE id = ?", [name, id])
+    connection = await getConnection()
+    await connection.execute("UPDATE categories SET name = ?, updated_at = NOW() WHERE id = ?", [name, id])
     const updatedCategory = await getCategoryById(id)
     return { success: true, data: updatedCategory }
   } catch (error: unknown) {
@@ -61,12 +75,16 @@ export async function updateCategory(id: number, name: string): Promise<Mutation
       return { success: false, error: "Tên danh mục này đã tồn tại. Vui lòng sử dụng tên khác." }
     }
     return { success: false, error: "Có lỗi xảy ra khi cập nhật danh mục." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function deleteCategory(id: number): Promise<MutationResult<boolean>> {
+  let connection
   try {
-    const [result] = await mysql.execute("DELETE FROM categories WHERE id = ?", [id])
+    connection = await getConnection()
+    const [result] = await connection.execute("DELETE FROM categories WHERE id = ?", [id])
     const success = (result as ResultSetHeader).affectedRows > 0
     return { success: true, data: success }
   } catch (error: unknown) {
@@ -80,18 +98,24 @@ export async function deleteCategory(id: number): Promise<MutationResult<boolean
       }
     }
     return { success: false, error: "Có lỗi xảy ra khi xóa danh mục." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function getAllCategoryIds(): Promise<Set<number>> {
   noStore()
+  let connection
   try {
-    const [rows] = await mysql.execute("SELECT id FROM categories")
+    connection = await getConnection()
+    const [rows] = await connection.execute("SELECT id FROM categories")
     const ids = (rows as { id: number }[]).map((row) => row.id)
     return new Set(ids)
   } catch (error) {
     console.error("Error fetching all category IDs from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -100,6 +124,7 @@ export async function getMonthlyCategoryGrossProfit(
   endDate?: Date,
 ): Promise<{ category_name: string; total_gross_profit: number }[]> {
   noStore()
+  let connection
   try {
     let query = `
       SELECT
@@ -125,10 +150,13 @@ export async function getMonthlyCategoryGrossProfit(
 
     query += ` GROUP BY c.name ORDER BY total_gross_profit DESC`
 
-    const [rows] = await mysql.execute(query, params)
+    connection = await getConnection()
+    const [rows] = await connection.execute(query, params)
     return rows as { category_name: string; total_gross_profit: number }[]
   } catch (error) {
     console.error("Error fetching monthly category gross profit from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }

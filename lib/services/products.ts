@@ -1,7 +1,7 @@
 "use server"
 
 import { unstable_noStore as noStore } from "next/cache"
-import { dbPool as mysql } from "@/lib/mysql/client"
+import { getConnection } from "@/lib/mysql/client"
 import type { Product } from "@/lib/types/database"
 import { parseNumber } from "@/lib/utils"
 import { formatToMySQLDateTime } from "@/lib/mysql/utils"
@@ -40,8 +40,10 @@ interface ProductRow extends RowDataPacket {
 
 export async function getProducts(): Promise<Product[]> {
   noStore()
+  let connection
   try {
-    const [rows] = await mysql.execute(
+    connection = await getConnection()
+    const [rows] = await connection.execute(
       `SELECT p.*, c.name AS category_name
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
@@ -68,13 +70,17 @@ export async function getProducts(): Promise<Product[]> {
   } catch (error) {
     console.error("Error fetching products from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function getProductById(id: number): Promise<Product | null> {
   noStore()
+  let connection
   try {
-    const [rows] = await mysql.execute(
+    connection = await getConnection()
+    const [rows] = await connection.execute(
       `SELECT p.*, c.name AS category_name
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
@@ -105,14 +111,18 @@ export async function getProductById(id: number): Promise<Product | null> {
   } catch (error) {
     console.error("Error fetching product from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
 export async function createProduct(
   productInput: Omit<Product, "id" | "created_at" | "updated_at" | "image_data" | "price" | "isService" | "category">,
 ): Promise<MutationResult<Product | null>> {
+  let connection
   try {
-    const [result] = await mysql.execute(
+    connection = await getConnection()
+    const [result] = await connection.execute(
       `INSERT INTO products (name, description, retail_price, wholesale_price, cost_price, stock_quantity, min_stock_level, barcode, image_url, status, category_id, sku)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -147,6 +157,8 @@ export async function createProduct(
       return { success: false, error: "Danh mục sản phẩm không hợp lệ. Vui lòng chọn một danh mục hiện có." }
     }
     return { success: false, error: "Có lỗi xảy ra khi lưu sản phẩm." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -156,7 +168,9 @@ export async function updateProduct(
     Omit<Product, "id" | "created_at" | "updated_at" | "image_data" | "price" | "isService" | "category">
   >,
 ): Promise<MutationResult<Product | null>> {
+  let connection
   try {
+    connection = await getConnection()
     const updateFields: string[] = []
     const updateValues: (string | number | null)[] = []
 
@@ -214,7 +228,7 @@ export async function updateProduct(
       return { success: true, data: currentProduct }
     }
 
-    await mysql.execute(`UPDATE products SET ${updateFields.join(", ")}, updated_at = NOW() WHERE id = ?`, [
+    await connection.execute(`UPDATE products SET ${updateFields.join(", ")}, updated_at = NOW() WHERE id = ?`, [
       ...updateValues,
       id,
     ])
@@ -233,6 +247,8 @@ export async function updateProduct(
       return { success: false, error: "Danh mục sản phẩm không hợp lệ. Vui lòng chọn một danh mục hiện có." }
     }
     return { success: false, error: "Có lỗi xảy ra khi cập nhật sản phẩm." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -258,6 +274,7 @@ const getPublicIdFromCloudinaryUrl = (url: string): string | null => {
 }
 
 export async function deleteProduct(id: number): Promise<MutationResult<boolean>> {
+  let connection
   try {
     // 1. Get product details to find image_url
     const productToDelete = await getProductById(id)
@@ -284,7 +301,8 @@ export async function deleteProduct(id: number): Promise<MutationResult<boolean>
     }
 
     // 3. Delete product from database
-    const [result] = await mysql.execute("DELETE FROM products WHERE id = ?", [id])
+    connection = await getConnection()
+    const [result] = await connection.execute("DELETE FROM products WHERE id = ?", [id])
     // @ts-expect-error - MySQL result.affectedRows is not typed but exists at runtime
     const success = result.affectedRows > 0
     return { success: true, data: success }
@@ -299,6 +317,8 @@ export async function deleteProduct(id: number): Promise<MutationResult<boolean>
       }
     }
     return { success: false, error: "Có lỗi xảy ra khi xóa sản phẩm." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -308,8 +328,10 @@ export async function updateProductStock(
   quantityChange: number,
 ): Promise<MutationResult<Product | null>> {
   noStore()
+  let connection
   try {
-    await mysql.execute("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [
+    connection = await getConnection()
+    await connection.execute("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?", [
       quantityChange,
       productId,
     ])
@@ -318,6 +340,8 @@ export async function updateProductStock(
   } catch (error) {
     console.error("Error updating product stock:", error)
     return { success: false, error: "Có lỗi xảy ra khi cập nhật số lượng tồn kho." }
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -332,12 +356,14 @@ interface TopSellingProductRow extends RowDataPacket {
 export async function getTopSellingProducts(limit = 5) {
   noStore()
 
+  let connection
   try {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-    const [rows] = await mysql.execute(
+    connection = await getConnection()
+    const [rows] = await connection.execute(
       `SELECT
          p.id,
          p.name,
@@ -364,6 +390,8 @@ export async function getTopSellingProducts(limit = 5) {
   } catch (error) {
     console.error("Error fetching top selling products from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -395,12 +423,14 @@ export async function getMonthlyProductPerformance(
 > {
   noStore()
 
+  let connection
   try {
     const now = new Date()
     const start = startDate || new Date(now.getFullYear(), now.getMonth(), 1)
     const end = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-    const [rows] = await mysql.execute(
+    connection = await getConnection()
+    const [rows] = await connection.execute(
       `SELECT
         p.id,
         p.name,
@@ -431,6 +461,8 @@ export async function getMonthlyProductPerformance(
   } catch (error) {
     console.error("Error fetching monthly product performance from MySQL:", error)
     throw error
+  } finally {
+    if (connection) connection.release()
   }
 }
 
@@ -441,6 +473,7 @@ export async function bulkCreateProducts(
     return { success: true, data: 0 }
   }
 
+  let connection
   try {
     const values = products.map((p) => [
       p.name,
@@ -475,7 +508,8 @@ export async function bulkCreateProducts(
     `
     // Using `mysql.query` for `VALUES ?` syntax as `mysql.execute` doesn't directly support it for bulk inserts with `ON DUPLICATE KEY UPDATE`
     // @ts-expect-error - mysql.query with VALUES ? syntax is not fully typed
-    const [result] = await mysql.query(query, [values])
+    connection = await getConnection()
+    const [result] = await connection.query(query, [values])
 
     // @ts-expect-error - MySQL result.affectedRows is not typed but exists at runtime
     return { success: true, data: result.affectedRows }
@@ -489,5 +523,7 @@ export async function bulkCreateProducts(
       return { success: false, error: "Có sản phẩm có ID danh mục không hợp lệ. Vui lòng kiểm tra lại." }
     }
     return { success: false, error: `Lỗi khi nhập dữ liệu hàng loạt: ${mysqlError.message || "Unknown error"}` }
+  } finally {
+    if (connection) connection.release()
   }
 }

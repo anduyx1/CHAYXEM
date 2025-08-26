@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import mysql from "@/lib/mysql"
+import { getConnection } from "@/lib/mysql/client"
 
 export async function GET() {
+  let connection
   try {
-    const connection = await mysql.getConnection()
+    connection = await getConnection()
 
     const [rows] = await connection.execute(`
       SELECT 
@@ -18,11 +19,11 @@ export async function GET() {
       ORDER BY name ASC
     `)
 
-    connection.release()
-
     return NextResponse.json(rows)
   } catch (error) {
     console.error("Failed to fetch customers:", error)
     return NextResponse.json({ error: "Failed to fetch customers" }, { status: 500 })
+  } finally {
+    if (connection) connection.release()
   }
 }

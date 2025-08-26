@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import mysql from "@/lib/mysql"
+import { getConnection } from "@/lib/mysql/client"
 import type { RowDataPacket } from "mysql2"
 
 interface SettingRow extends RowDataPacket {
@@ -8,10 +8,10 @@ interface SettingRow extends RowDataPacket {
 }
 
 export async function GET() {
+  let connection
   try {
-    let connection
     try {
-      connection = await mysql.getConnection()
+      connection = await getConnection()
     } catch (dbError) {
       console.error("Database connection failed:", dbError)
       return NextResponse.json({ 
@@ -27,8 +27,6 @@ export async function GET() {
       FROM settings
     `)
 
-    connection.release()
-
     const settings: Record<string, string> = {}
     ;(rows as SettingRow[]).forEach((row) => {
       settings[row.key] = row.value
@@ -38,5 +36,7 @@ export async function GET() {
   } catch (error) {
     console.error("Failed to fetch settings:", error)
     return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 })
+  } finally {
+    if (connection) connection.release()
   }
 }
